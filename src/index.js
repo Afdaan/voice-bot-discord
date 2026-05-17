@@ -1,7 +1,10 @@
+import dns from 'node:dns';
 import { Client, GatewayIntentBits } from 'discord.js';
 import { config } from './config.js';
 import { logger } from './logger.js';
 import { voiceManager } from './voice-manager.js';
+
+dns.setDefaultResultOrder('ipv4first');
 
 const client = new Client({
   intents: [
@@ -12,8 +15,18 @@ const client = new Client({
 
 client.once('clientReady', () => {
   logger.info(`Bot logged in successfully as ${client.user?.tag}`);
+
   voiceManager.init(client);
   voiceManager.join();
+});
+
+client.on('voiceStateUpdate', (oldState, newState) => {
+  if (newState.member?.user.id === client.user?.id) {
+    if (!newState.channelId || newState.channelId !== config.voiceChannelId) {
+      logger.warn('Bot voice state changed or disconnected externally. Instantly rejoining...');
+      voiceManager.join();
+    }
+  }
 });
 
 client.on('shardReconnecting', (id) => {

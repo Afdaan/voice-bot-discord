@@ -5,11 +5,25 @@ services:
       dockerfile: Dockerfile
     container_name: discord-afk-voice-bot
     restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
     network_mode: "host"
     env_file:
       - .env
     environment:
       - NODE_ENV=production
+      - TZ=Asia/Jakarta
+    healthcheck:
+      test: ["CMD", "node", "-e", "process.exit(0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
     logging:
       driver: "json-file"
       options:
