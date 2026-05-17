@@ -16,15 +16,25 @@ const client = new Client({
 client.once('clientReady', () => {
   logger.info(`Bot logged in successfully as ${client.user?.tag}`);
 
+  const activityObj = {
+    name: config.activityName,
+    type: config.activityType,
+    details: config.rpcDetails,
+    state: config.rpcState,
+    timestamps: { start: new Date() }
+  };
+  if (config.rpcLargeImage) {
+    activityObj.assets = {
+      largeImage: config.rpcLargeImage,
+      largeText: config.rpcLargeText
+    };
+  }
+
   client.user?.setPresence({
-    activities: [{
-      name: config.activityName,
-      state: config.activityName,
-      type: config.activityType
-    }],
+    activities: [activityObj],
     status: 'online'
   });
-  logger.info(`Activity presence set to: [${config.activityType}] ${config.activityName}`);
+  logger.info(`Rich presence set to: [${config.activityType}] ${config.activityName}`);
 
   voiceManager.init(client);
   voiceManager.join();
