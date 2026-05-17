@@ -15,7 +15,7 @@ ENV NODE_ENV=production
 
 WORKDIR /app
 
-RUN apk add --no-cache ffmpeg libopus
+RUN apk add --no-cache ffmpeg opus
 
 COPY --from=builder /app/node_modules ./node_modules
 COPY package*.json ./
