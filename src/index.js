@@ -66,9 +66,11 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
 
 client.on('voiceStateUpdate', (oldState, newState) => {
   if (newState.member?.user.id === client.user?.id) {
-    if (!newState.channelId || newState.channelId !== config.voiceChannelId) {
-      logger.warn('Bot voice state changed or disconnected externally. Instantly rejoining...');
-      voiceManager.join();
+    if (!voiceManager.isConnecting && !voiceManager.isRejoining && !voiceManager.isShuttingDown) {
+      if (!newState.channelId || newState.channelId !== config.voiceChannelId) {
+        logger.warn('Bot voice state changed or disconnected externally. Instantly rejoining...');
+        voiceManager.scheduleRejoin();
+      }
     }
   }
 });

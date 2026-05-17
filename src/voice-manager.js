@@ -28,6 +28,18 @@ class VoiceManager {
     this.healthCheckTimer = setInterval(() => this.verifyHealth(), 30000);
   }
 
+  async disconnectCleanly() {
+    const existing = getVoiceConnection(config.guildId);
+    if (existing && existing.state.status !== VoiceConnectionStatus.Destroyed) {
+      try {
+        existing.destroy();
+        await new Promise(res => setTimeout(res, 1500));
+      } catch (err) {
+        logger.debug('Error destroying existing connection', err);
+      }
+    }
+  }
+
   async verifyHealth() {
     if (this.isShuttingDown || this.isConnecting || this.isRejoining || !this.client?.isReady()) return;
 
@@ -50,14 +62,7 @@ class VoiceManager {
           selfDeaf: voiceState?.selfDeaf
         });
 
-        if (connection && connection.state.status !== VoiceConnectionStatus.Destroyed) {
-          try {
-            connection.destroy();
-          } catch (err) {
-            logger.debug('Error destroying connection during health check recovery', err);
-          }
-        }
-
+        await this.disconnectCleanly();
         await this.join();
       }
     } catch (error) {
@@ -77,14 +82,7 @@ class VoiceManager {
         throw new Error(`Guild ${config.guildId} could not be fetched.`);
       }
 
-      const existingConnection = getVoiceConnection(config.guildId);
-      if (existingConnection && existingConnection.state.status !== VoiceConnectionStatus.Destroyed) {
-        try {
-          existingConnection.destroy();
-        } catch (err) {
-          logger.debug('Error destroying existing connection prior to join', err);
-        }
-      }
+      await this.disconnectCleanly();
 
       const connection = joinVoiceChannel({
         channelId: config.voiceChannelId,
