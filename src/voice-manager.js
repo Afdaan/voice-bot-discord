@@ -16,6 +16,9 @@ class VoiceManager {
     this.isRejoining = false;
     this.isShuttingDown = false;
     this.healthCheckTimer = null;
+    this.voiceStateDebounce = null;
+    this.lastRejoinTime = 0;
+    this.unhealthyCount = 0;
   }
 
   init(client) {
@@ -28,29 +31,23 @@ class VoiceManager {
     this.healthCheckTimer = setInterval(() => this.verifyHealth(), 30000);
   }
 
+  cleanupConnection(connection) {
+    if (!connection) return;
+    try {
+      connection.removeAllListeners();
+      if (connection.state.status !== VoiceConnectionStatus.Destroyed) {
+        connection.destroy();
+      }
+    } catch (err) {
+      logger.debug('Error destroying voice connection during cleanup', err);
+    }
+  }
+
   async disconnectCleanly() {
     const existing = getVoiceConnection(config.guildId);
-    if (existing && existing.state.status !== VoiceConnectionStatus.Destroyed) {
-      try {
-        existing.destroy();
-        await new Promise(res => setTimeout(res, 1500));
-      } catch (err) {
-        logger.debug('Error destroying existing connection', err);
-      }
-    } else {
-      const guild = this.client?.guilds.cache.get(config.guildId);
-      if (guild?.shard) {
-        guild.shard.send({
-          op: 4,
-          d: {
-            guild_id: config.guildId,
-            channel_id: null,
-            self_mute: true,
-            self_deaf: true
-          }
-        });
-        await new Promise(res => setTimeout(res, 1500));
-      }
+    if (existing) {
+      this.cleanupConnection(existing);
+      await new Promise(resolve => setTimeout(resolve, 1500));
     }
   }
 
@@ -69,15 +66,22 @@ class VoiceManager {
       const isMutedAndDeafened = voiceState?.selfMute && voiceState?.selfDeaf;
 
       if (!isConnected || !isInCorrectChannel || !isMutedAndDeafened) {
-        logger.warn('Health check detected unhealthy voice state. Initiating recovery...', {
-          connectionStatus: connection?.state.status,
-          channelId: voiceState?.channelId,
-          selfMute: voiceState?.selfMute,
-          selfDeaf: voiceState?.selfDeaf
-        });
-
-        await this.disconnectCleanly();
-        await this.join();
+        this.unhealthyCount++;
+        if (this.unhealthyCount >= 2) {
+          logger.warn('Health check confirmed unhealthy voice state across consecutive cycles. Initiating recovery...', {
+            connectionStatus: connection?.state.status,
+            channelId: voiceState?.channelId,
+            selfMute: voiceState?.selfMute,
+            selfDeaf: voiceState?.selfDeaf
+          });
+          this.unhealthyCount = 0;
+          await this.disconnectCleanly();
+          await this.join();
+        } else {
+          logger.debug('Health check detected potential abnormal voice state. Observing next cycle...');
+        }
+      } else {
+        this.unhealthyCount = 0;
       }
     } catch (error) {
       logger.error('Error during voice health verification', error);
@@ -87,35 +91,51 @@ class VoiceManager {
   async join() {
     if (this.isShuttingDown || this.isConnecting || !this.client?.isReady()) return;
 
+    const existing = getVoiceConnection(config.guildId);
+    const voiceState = this.client.guilds.cache.get(config.guildId)?.members.me?.voice;
+    if (existing?.state.status === VoiceConnectionStatus.Ready && voiceState?.channelId === config.voiceChannelId) {
+      logger.debug('Active ready connection already exists in target channel. Skipping join.');
+      return;
+    }
+
     this.isConnecting = true;
     logger.info(`Attempting connection to voice channel ${config.voiceChannelId}`);
 
     try {
       const guild = this.client.guilds.cache.get(config.guildId);
       if (!guild) {
-        throw new Error(`Guild ${config.guildId} could not be found in client cache.`);
+        throw new Error(`Guild ${config.guildId} not found in client cache.`);
       }
 
-      await this.disconnectCleanly();
+      if (existing) {
+        this.cleanupConnection(existing);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
 
       const connection = joinVoiceChannel({
         channelId: config.voiceChannelId,
         guildId: config.guildId,
         adapterCreator: guild.voiceAdapterCreator,
         selfDeaf: true,
-        selfMute: true,
-        group: 'default'
+        selfMute: true
       });
 
-      this.setupConnectionListeners(connection);
+      logger.debug('Waiting for connection to enter Connecting state...');
+      await entersState(connection, VoiceConnectionStatus.Connecting, 15000);
 
-      await entersState(connection, VoiceConnectionStatus.Ready, 20000);
+      logger.debug('Waiting for connection to enter Ready state...');
+      await entersState(connection, VoiceConnectionStatus.Ready, 30000);
+
+      this.setupConnectionListeners(connection);
       
-      logger.info('Successfully connected to voice channel.');
+      logger.info('Successfully connected and stabilized voice connection.');
       this.backoff.reset();
+      this.unhealthyCount = 0;
     } catch (error) {
-      logger.error('Failed to join voice channel', error);
-      this.scheduleRejoin();
+      logger.error('Failed to initialize voice connection', error);
+      const failedConn = getVoiceConnection(config.guildId);
+      if (failedConn) this.cleanupConnection(failedConn);
+      this.scheduleRejoin({ reason: 'Initial join failure' });
     } finally {
       this.isConnecting = false;
     }
@@ -123,7 +143,7 @@ class VoiceManager {
 
   setupConnectionListeners(connection) {
     connection.on('stateChange', (oldState, newState) => {
-      logger.info(`Voice connection state changed from ${oldState.status} to ${newState.status}`);
+      logger.info(`Voice connection state changed: ${oldState.status} -> ${newState.status}`);
     });
 
     connection.on('debug', (message) => {
@@ -133,43 +153,63 @@ class VoiceManager {
     connection.on(VoiceConnectionStatus.Disconnected, async (oldState, newState) => {
       if (this.isShuttingDown) return;
 
-      logger.warn('Voice connection disconnected.', { reason: newState.reason, closeCode: newState.closeCode });
+      logger.warn('Voice connection disconnected', { reason: newState.reason, closeCode: newState.closeCode });
 
       try {
         await Promise.race([
           entersState(connection, VoiceConnectionStatus.Signalling, 5000),
-          entersState(connection, VoiceConnectionStatus.Connecting, 5000),
+          entersState(connection, VoiceConnectionStatus.Connecting, 5000)
         ]);
-        logger.debug('Connection recovering automatically.');
+        logger.debug('Connection recovering automatically');
       } catch {
-        logger.warn('Connection failed to recover automatically. Initiating manual rejoin.');
-        if (connection.state.status !== VoiceConnectionStatus.Destroyed) {
-          try {
-            connection.destroy();
-          } catch (err) {
-            logger.debug('Error destroying connection on disconnect', err);
-          }
-        }
-        this.scheduleRejoin();
+        logger.warn('Connection failed to recover automatically. Scheduling clean manual rejoin');
+        this.cleanupConnection(connection);
+        this.scheduleRejoin({ reason: 'Disconnected from voice server' });
       }
     });
 
     connection.on(VoiceConnectionStatus.Destroyed, () => {
       if (!this.isShuttingDown && !this.isConnecting && !this.isRejoining) {
-        logger.debug('Connection destroyed unexpectedly. Scheduling rejoin.');
-        this.scheduleRejoin();
+        logger.debug('Connection destroyed unexpectedly. Scheduling rejoin');
+        this.scheduleRejoin({ reason: 'Connection destroyed unexpectedly' });
       }
     });
 
     connection.on('error', (error) => {
       logger.error('Voice connection encountered an error', error);
+      this.cleanupConnection(connection);
+      this.scheduleRejoin({ reason: 'Connection error' });
     });
   }
 
-  async scheduleRejoin() {
+  handleVoiceStateUpdate(oldState, newState) {
+    if (newState.member?.user.id !== this.client?.user?.id) return;
+    if (this.isConnecting || this.isRejoining || this.isShuttingDown) return;
+
+    if (this.voiceStateDebounce) clearTimeout(this.voiceStateDebounce);
+    
+    this.voiceStateDebounce = setTimeout(() => {
+      const currentVoice = newState.guild.members.me?.voice;
+      if (!currentVoice?.channelId || currentVoice.channelId !== config.voiceChannelId) {
+        logger.warn('Bot voice state desync confirmed after debounce. Initiating rejoin...');
+        this.scheduleRejoin({ reason: 'Voice state desync' });
+      }
+    }, 3000);
+  }
+
+  async scheduleRejoin({ reason = 'Unknown' } = {}) {
     if (this.isShuttingDown || this.isConnecting || this.isRejoining) return;
     
+    const now = Date.now();
+    if (now - this.lastRejoinTime < 5000) {
+      logger.debug('Rejoin debounced due to rapid scheduling');
+      return;
+    }
+    this.lastRejoinTime = now;
+
     this.isRejoining = true;
+    logger.info(`Scheduling voice rejoin. Reason: ${reason}`);
+
     try {
       await this.backoff.wait();
       await this.join();
@@ -184,15 +224,15 @@ class VoiceManager {
       clearInterval(this.healthCheckTimer);
       this.healthCheckTimer = null;
     }
+    if (this.voiceStateDebounce) {
+      clearTimeout(this.voiceStateDebounce);
+      this.voiceStateDebounce = null;
+    }
 
     const connection = getVoiceConnection(config.guildId);
-    if (connection && connection.state.status !== VoiceConnectionStatus.Destroyed) {
-      try {
-        connection.destroy();
-        logger.info('Voice connection successfully closed.');
-      } catch (err) {
-        logger.error('Error closing voice connection during shutdown', err);
-      }
+    if (connection) {
+      this.cleanupConnection(connection);
+      logger.info('Voice connection successfully closed during shutdown');
     }
   }
 }

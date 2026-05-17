@@ -54,8 +54,11 @@ client.once('clientReady', async () => {
     await enforceNickname(guild);
   }
 
-  voiceManager.init(client);
-  voiceManager.join();
+  logger.info('Waiting 3s for gateway stabilization before initializing voice...');
+  setTimeout(() => {
+    voiceManager.init(client);
+    voiceManager.join();
+  }, 3000);
 });
 
 client.on('guildMemberUpdate', async (oldMember, newMember) => {
@@ -65,14 +68,7 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
 });
 
 client.on('voiceStateUpdate', (oldState, newState) => {
-  if (newState.member?.user.id === client.user?.id) {
-    if (!voiceManager.isConnecting && !voiceManager.isRejoining && !voiceManager.isShuttingDown) {
-      if (!newState.channelId || newState.channelId !== config.voiceChannelId) {
-        logger.warn('Bot voice state changed or disconnected externally. Instantly rejoining...');
-        voiceManager.scheduleRejoin();
-      }
-    }
-  }
+  voiceManager.handleVoiceStateUpdate(oldState, newState);
 });
 
 client.on('shardReconnecting', (id) => {
