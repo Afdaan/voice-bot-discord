@@ -10,7 +10,7 @@ const client = new Client({
   ]
 });
 
-client.once('ready', () => {
+client.once('clientReady', () => {
   logger.info(`Bot logged in successfully as ${client.user?.tag}`);
   voiceManager.init(client);
   voiceManager.join();
