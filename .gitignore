@@ -1,0 +1,101 @@
+# ==============================================================================
+# PROFESSIONAL STANDARD .GITIGNORE FOR NODE.JS / DISCORD BOT APPLICATION
+# ==============================================================================
+
+# 1. DEPENDENCIES & RUNTIME PACKAGES
+# ------------------------------------------------------------------------------
+node_modules/
+jspm_packages/
+web_modules/
+/.pnp
+.pnp.*
+
+# 2. ENVIRONMENT CONFIGURATIONS & SECRETS (STRICTLY PRIVATE)
+# ------------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.cert
+*.crt
+config/local.*
+auth.json
+service-account*.json
+
+# 3. LOGS & DEBUGGING
+# ------------------------------------------------------------------------------
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# 4. RUNTIME DATA, DATABASES & AUDIO/MEDIA CACHE
+# ------------------------------------------------------------------------------
+pids/
+*.pid
+*.seed
+*.pid.lock
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+/temp/
+/tmp/
+/cache/
+*.mp3
+*.wav
+*.ogg
+
+# 5. CACHES, COMPILED OUTPUT & BUILD DIRECTORIES
+# ------------------------------------------------------------------------------
+.cache/
+/dist/
+/build/
+/out/
+.parcel-cache/
+.eslintcache
+.stylelintcache
+.prettiercache
+tsconfig.tsbuildinfo
+
+# 6. TESTING & COVERAGE
+# ------------------------------------------------------------------------------
+coverage/
+.nyc_output/
+.e2e/
+
+# 7. OS & SYSTEM FILES
+# ------------------------------------------------------------------------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+$RECYCLE.BIN/
+
+# 8. IDE, EDITORS & LOCAL CONFIGURATIONS
+# ------------------------------------------------------------------------------
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*.sublime-*
+
+# 9. DOCKER LOCAL OVERRIDES
+# ------------------------------------------------------------------------------
+docker-compose.override.yml
+*.docker.local
