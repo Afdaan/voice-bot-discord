@@ -19,6 +19,7 @@ client.once('clientReady', () => {
   client.user?.setPresence({
     activities: [{
       name: config.activityName,
+      state: config.activityName,
       type: config.activityType
     }],
     status: 'online'

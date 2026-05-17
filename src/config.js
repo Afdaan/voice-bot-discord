@@ -16,20 +16,20 @@ function validateConfig() {
     process.exit(1);
   }
 
-  const activityTypeInput = (BOT_ACTIVITY_TYPE || 'playing').toLowerCase();
-  let activityType = ActivityType.Playing;
-  if (activityTypeInput === 'listening') activityType = ActivityType.Listening;
+  const activityTypeInput = (BOT_ACTIVITY_TYPE || 'custom').toLowerCase();
+  let activityType = ActivityType.Custom;
+  if (activityTypeInput === 'playing') activityType = ActivityType.Playing;
+  else if (activityTypeInput === 'listening') activityType = ActivityType.Listening;
   else if (activityTypeInput === 'watching') activityType = ActivityType.Watching;
   else if (activityTypeInput === 'streaming') activityType = ActivityType.Streaming;
   else if (activityTypeInput === 'competing') activityType = ActivityType.Competing;
-  else if (activityTypeInput === 'custom') activityType = ActivityType.Custom;
 
   return {
     token: DISCORD_TOKEN.trim(),
     guildId: GUILD_ID.trim(),
     voiceChannelId: VOICE_CHANNEL_ID.trim(),
     logLevel: (LOG_LEVEL || 'info').toLowerCase(),
-    activityName: BOT_ACTIVITY || 'with Dnz 💖',
+    activityName: BOT_ACTIVITY || 'Playing with Dnz 💖',
     activityType
   };
 }
