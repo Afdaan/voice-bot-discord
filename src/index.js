@@ -16,6 +16,15 @@ const client = new Client({
 client.once('clientReady', () => {
   logger.info(`Bot logged in successfully as ${client.user?.tag}`);
 
+  client.user?.setPresence({
+    activities: [{
+      name: config.activityName,
+      type: config.activityType
+    }],
+    status: 'online'
+  });
+  logger.info(`Activity presence set to: [${config.activityType}] ${config.activityName}`);
+
   voiceManager.init(client);
   voiceManager.join();
 });

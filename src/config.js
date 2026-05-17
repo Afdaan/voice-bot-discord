@@ -1,9 +1,10 @@
 import dotenv from 'dotenv';
+import { ActivityType } from 'discord.js';
 
 dotenv.config();
 
 function validateConfig() {
-  const { DISCORD_TOKEN, GUILD_ID, VOICE_CHANNEL_ID, LOG_LEVEL } = process.env;
+  const { DISCORD_TOKEN, GUILD_ID, VOICE_CHANNEL_ID, LOG_LEVEL, BOT_ACTIVITY, BOT_ACTIVITY_TYPE } = process.env;
 
   const missing = [];
   if (!DISCORD_TOKEN) missing.push('DISCORD_TOKEN');
@@ -15,11 +16,21 @@ function validateConfig() {
     process.exit(1);
   }
 
+  const activityTypeInput = (BOT_ACTIVITY_TYPE || 'playing').toLowerCase();
+  let activityType = ActivityType.Playing;
+  if (activityTypeInput === 'listening') activityType = ActivityType.Listening;
+  else if (activityTypeInput === 'watching') activityType = ActivityType.Watching;
+  else if (activityTypeInput === 'streaming') activityType = ActivityType.Streaming;
+  else if (activityTypeInput === 'competing') activityType = ActivityType.Competing;
+  else if (activityTypeInput === 'custom') activityType = ActivityType.Custom;
+
   return {
     token: DISCORD_TOKEN.trim(),
     guildId: GUILD_ID.trim(),
     voiceChannelId: VOICE_CHANNEL_ID.trim(),
-    logLevel: (LOG_LEVEL || 'info').toLowerCase()
+    logLevel: (LOG_LEVEL || 'info').toLowerCase(),
+    activityName: BOT_ACTIVITY || 'with Dnz 💖',
+    activityType
   };
 }
 
