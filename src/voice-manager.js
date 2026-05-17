@@ -120,6 +120,14 @@ class VoiceManager {
         selfMute: true
       });
 
+      connection.on('stateChange', (oldState, newState) => {
+        logger.info(`Voice connection state changed: ${oldState.status} -> ${newState.status}`);
+      });
+
+      connection.on('debug', (message) => {
+        logger.info(`[VOICE_DEBUG] ${message}`);
+      });
+
       logger.debug('Waiting for connection to enter Connecting state...');
       await entersState(connection, VoiceConnectionStatus.Connecting, 15000);
 
@@ -135,6 +143,7 @@ class VoiceManager {
       logger.error('Failed to initialize voice connection', error);
       const failedConn = getVoiceConnection(config.guildId);
       if (failedConn) this.cleanupConnection(failedConn);
+      this.isConnecting = false;
       this.scheduleRejoin({ reason: 'Initial join failure' });
     } finally {
       this.isConnecting = false;
@@ -142,14 +151,6 @@ class VoiceManager {
   }
 
   setupConnectionListeners(connection) {
-    connection.on('stateChange', (oldState, newState) => {
-      logger.info(`Voice connection state changed: ${oldState.status} -> ${newState.status}`);
-    });
-
-    connection.on('debug', (message) => {
-      logger.debug('Voice Debug:', { message });
-    });
-
     connection.on(VoiceConnectionStatus.Disconnected, async (oldState, newState) => {
       if (this.isShuttingDown) return;
 
