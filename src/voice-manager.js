@@ -37,6 +37,20 @@ class VoiceManager {
       } catch (err) {
         logger.debug('Error destroying existing connection', err);
       }
+    } else {
+      const guild = this.client?.guilds.cache.get(config.guildId);
+      if (guild?.shard) {
+        guild.shard.send({
+          op: 4,
+          d: {
+            guild_id: config.guildId,
+            channel_id: null,
+            self_mute: true,
+            self_deaf: true
+          }
+        });
+        await new Promise(res => setTimeout(res, 1500));
+      }
     }
   }
 
@@ -77,9 +91,9 @@ class VoiceManager {
     logger.info(`Attempting connection to voice channel ${config.voiceChannelId}`);
 
     try {
-      const guild = await this.client.guilds.fetch(config.guildId).catch(() => null);
+      const guild = this.client.guilds.cache.get(config.guildId);
       if (!guild) {
-        throw new Error(`Guild ${config.guildId} could not be fetched.`);
+        throw new Error(`Guild ${config.guildId} could not be found in client cache.`);
       }
 
       await this.disconnectCleanly();
