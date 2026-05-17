@@ -122,6 +122,14 @@ class VoiceManager {
   }
 
   setupConnectionListeners(connection) {
+    connection.on('stateChange', (oldState, newState) => {
+      logger.info(`Voice connection state changed from ${oldState.status} to ${newState.status}`);
+    });
+
+    connection.on('debug', (message) => {
+      logger.debug('Voice Debug:', { message });
+    });
+
     connection.on(VoiceConnectionStatus.Disconnected, async (oldState, newState) => {
       if (this.isShuttingDown) return;
 

@@ -8,7 +8,6 @@ services:
     read_only: true
     tmpfs:
       - /tmp
-    network_mode: "host"
     env_file:
       - .env
     environment:
