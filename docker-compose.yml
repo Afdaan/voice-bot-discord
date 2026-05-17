@@ -4,6 +4,7 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: discord-afk-voice-bot
+    network_mode: host
     restart: unless-stopped
     read_only: true
     tmpfs:
