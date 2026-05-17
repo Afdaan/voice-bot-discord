@@ -13,7 +13,20 @@ const client = new Client({
   ]
 });
 
-client.once('clientReady', () => {
+async function enforceNickname(guild) {
+  if (!guild || !guild.members?.me) return;
+  if (guild.members.me.nickname !== config.botNickname) {
+    logger.warn(`Nickname mismatch detected in guild ${guild.name} (Current: "${guild.members.me.nickname}"). Enforcing target: "${config.botNickname}"`);
+    try {
+      await guild.members.me.setNickname(config.botNickname);
+      logger.info(`Successfully set bot nickname to "${config.botNickname}" in ${guild.name}.`);
+    } catch (error) {
+      logger.error(`Failed to set nickname in ${guild.name}. Check bot permissions (Change Nickname).`, error);
+    }
+  }
+}
+
+client.once('clientReady', async () => {
   logger.info(`Bot logged in successfully as ${client.user?.tag}`);
 
   const activityObj = {
@@ -36,8 +49,19 @@ client.once('clientReady', () => {
   });
   logger.info(`Rich presence set to: [${config.activityType}] ${config.activityName}`);
 
+  const guild = client.guilds.cache.get(config.guildId);
+  if (guild) {
+    await enforceNickname(guild);
+  }
+
   voiceManager.init(client);
   voiceManager.join();
+});
+
+client.on('guildMemberUpdate', async (oldMember, newMember) => {
+  if (newMember.user.id === client.user?.id && newMember.guild.id === config.guildId) {
+    await enforceNickname(newMember.guild);
+  }
 });
 
 client.on('voiceStateUpdate', (oldState, newState) => {
