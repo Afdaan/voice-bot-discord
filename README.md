@@ -112,6 +112,7 @@ For long-term daemon management on bare metal, use `systemd` or `pm2`.
 
 - **Bot connects but disconnects immediately**: Verify that the bot has both `Connect` and `View Channels` permissions in the specific voice channel permissions settings.
 - **Missing required environment variables**: Ensure your `.env` file is named exactly `.env` and resides in the root directory. Check for trailing whitespaces.
+- **Voice connection times out after `signalling -> connecting -> signalling`**: If the startup log says the channel and permissions validated successfully, verify that outbound UDP traffic to Discord voice servers is not blocked by your VPS, firewall, Docker host, or hosting provider.
 - **Stuck in reconnect loop**: Check `docker compose logs` to see if Discord is actively rejecting connection tokens or if rate limits have been triggered. The exponential backoff will automatically space out retry attempts up to 60 seconds.
 
 ---

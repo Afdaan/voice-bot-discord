@@ -4,6 +4,7 @@ import {
   VoiceConnectionStatus,
   entersState
 } from '@discordjs/voice';
+import { ChannelType, PermissionFlagsBits } from 'discord.js';
 import { config } from './config.js';
 import { logger } from './logger.js';
 import { BackoffManager } from './reconnect.js';
@@ -49,6 +50,45 @@ class VoiceManager {
       this.cleanupConnection(existing);
       await new Promise(resolve => setTimeout(resolve, 1500));
     }
+  }
+
+  async validateTargetChannel(guild) {
+    const channel = await guild.channels.fetch(config.voiceChannelId);
+    if (!channel) {
+      throw new Error(`Voice channel ${config.voiceChannelId} was not found in guild ${config.guildId}.`);
+    }
+
+    if (!channel.isVoiceBased?.()) {
+      throw new Error(`Configured channel ${config.voiceChannelId} is not a voice-based channel. Current type: ${channel.type}.`);
+    }
+
+    const botMember = guild.members.me ?? await guild.members.fetch(this.client.user.id);
+    const permissions = channel.permissionsFor(botMember);
+    const missingPermissions = [];
+
+    if (!permissions?.has(PermissionFlagsBits.ViewChannel)) missingPermissions.push('View Channel');
+    if (!permissions?.has(PermissionFlagsBits.Connect)) missingPermissions.push('Connect');
+
+    if (missingPermissions.length > 0) {
+      throw new Error(`Bot is missing required voice channel permissions: ${missingPermissions.join(', ')}.`);
+    }
+
+    if (channel.type !== ChannelType.GuildStageVoice && !permissions?.has(PermissionFlagsBits.Speak)) {
+      logger.warn('Bot is missing Speak permission in the target voice channel. Joining may work, but audio transmission would fail.');
+    }
+
+    if (channel.userLimit > 0 && channel.members.size >= channel.userLimit && !permissions?.has(PermissionFlagsBits.MoveMembers)) {
+      throw new Error(`Target voice channel is full (${channel.members.size}/${channel.userLimit}) and the bot cannot bypass the user limit.`);
+    }
+
+    logger.info(`Validated target voice channel "${channel.name}" (${channel.id})`, {
+      type: channel.type,
+      userLimit: channel.userLimit,
+      members: channel.members.size,
+      rtcRegion: channel.rtcRegion
+    });
+
+    return channel;
   }
 
   async verifyHealth() {
@@ -107,6 +147,8 @@ class VoiceManager {
         throw new Error(`Guild ${config.guildId} not found in client cache.`);
       }
 
+      await this.validateTargetChannel(guild);
+
       if (existing) {
         this.cleanupConnection(existing);
         await new Promise(resolve => setTimeout(resolve, 1000));
@@ -128,19 +170,29 @@ class VoiceManager {
         logger.info(`[VOICE_DEBUG] ${message}`);
       });
 
+      const initialErrorHandler = (error) => {
+        logger.error('Voice connection emitted an error during initialization', error);
+      };
+      connection.on('error', initialErrorHandler);
+
       logger.debug('Waiting for connection to enter Connecting state...');
       await entersState(connection, VoiceConnectionStatus.Connecting, 15000);
 
       logger.debug('Waiting for connection to enter Ready state...');
       await entersState(connection, VoiceConnectionStatus.Ready, 30000);
 
+      connection.off('error', initialErrorHandler);
       this.setupConnectionListeners(connection);
       
       logger.info('Successfully connected and stabilized voice connection.');
       this.backoff.reset();
       this.unhealthyCount = 0;
     } catch (error) {
-      logger.error('Failed to initialize voice connection', error);
+      if (error.name === 'AbortError') {
+        logger.error('Failed to initialize voice connection before timeout. If permissions validated successfully, this usually points to blocked/unstable UDP connectivity to Discord voice servers.', error);
+      } else {
+        logger.error('Failed to initialize voice connection', error);
+      }
       const failedConn = getVoiceConnection(config.guildId);
       if (failedConn) this.cleanupConnection(failedConn);
       this.isConnecting = false;
