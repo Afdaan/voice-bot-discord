@@ -103,9 +103,9 @@ class VoiceManager {
 
       const isConnected = connection && connection.state.status === VoiceConnectionStatus.Ready;
       const isInCorrectChannel = voiceState?.channelId === config.voiceChannelId;
-      const isMutedAndDeafened = voiceState?.selfMute && voiceState?.selfDeaf;
+      const isCorrectMuteDeafState = !voiceState?.selfMute && !voiceState?.selfDeaf;
 
-      if (!isConnected || !isInCorrectChannel || !isMutedAndDeafened) {
+      if (!isConnected || !isInCorrectChannel || !isCorrectMuteDeafState) {
         this.unhealthyCount++;
         if (this.unhealthyCount >= 2) {
           logger.warn('Health check confirmed unhealthy voice state across consecutive cycles. Initiating recovery...', {
@@ -158,8 +158,8 @@ class VoiceManager {
         channelId: config.voiceChannelId,
         guildId: config.guildId,
         adapterCreator: guild.voiceAdapterCreator,
-        selfDeaf: true,
-        selfMute: true
+        selfDeaf: false,
+        selfMute: false
       });
 
       connection.on('stateChange', (oldState, newState) => {
