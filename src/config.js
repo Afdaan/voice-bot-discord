@@ -11,10 +11,6 @@ function validateConfig() {
     LOG_LEVEL,
     BOT_ACTIVITY,
     BOT_ACTIVITY_TYPE,
-    RPC_DETAILS,
-    RPC_STATE,
-    RPC_LARGE_IMAGE,
-    RPC_LARGE_TEXT,
     BOT_NICKNAME
   } = process.env;
 
@@ -43,10 +39,6 @@ function validateConfig() {
     logLevel: (LOG_LEVEL || 'info').toLowerCase(),
     activityName: BOT_ACTIVITY || 'with Dnz 💖',
     activityType,
-    rpcDetails: RPC_DETAILS || 'Menemani Pasangan 24/7',
-    rpcState: RPC_STATE || 'Always Standby in Voice',
-    rpcLargeImage: RPC_LARGE_IMAGE || '',
-    rpcLargeText: RPC_LARGE_TEXT || 'Denia 💖 Dnz',
     botNickname: BOT_NICKNAME || 'Denia Istrinya Dnz'
   };
 }

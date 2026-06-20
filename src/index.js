@@ -6,12 +6,45 @@ import { voiceManager } from './voice-manager.js';
 
 dns.setDefaultResultOrder('ipv4first');
 
+const PRESENCE_REFRESH_INTERVAL_MS = 4 * 60 * 1000;
+
+function buildPresenceData() {
+  return {
+    activities: [{
+      name: config.activityName,
+      type: config.activityType
+    }],
+    status: 'online',
+    afk: false
+  };
+}
+
+function applyPresence(reason) {
+  if (!client.user) return;
+
+  client.user.setPresence(buildPresenceData());
+  logger.info(`Presence refreshed (${reason}): [${config.activityType}] ${config.activityName}`);
+}
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildVoiceStates
-  ]
+  ],
+  presence: buildPresenceData()
 });
+
+let presenceRefreshTimer = null;
+
+function startPresenceRefreshTimer() {
+  if (presenceRefreshTimer) return;
+
+  presenceRefreshTimer = setInterval(() => {
+    applyPresence('scheduled refresh');
+  }, PRESENCE_REFRESH_INTERVAL_MS);
+
+  presenceRefreshTimer.unref?.();
+}
 
 async function enforceNickname(guild) {
   if (!guild || !guild.members?.me) return;
@@ -29,25 +62,8 @@ async function enforceNickname(guild) {
 client.once('clientReady', async () => {
   logger.info(`Bot logged in successfully as ${client.user?.tag}`);
 
-  const activityObj = {
-    name: config.activityName,
-    type: config.activityType,
-    details: config.rpcDetails,
-    state: config.rpcState,
-    timestamps: { start: new Date() }
-  };
-  if (config.rpcLargeImage) {
-    activityObj.assets = {
-      largeImage: config.rpcLargeImage,
-      largeText: config.rpcLargeText
-    };
-  }
-
-  client.user?.setPresence({
-    activities: [activityObj],
-    status: 'online'
-  });
-  logger.info(`Rich presence set to: [${config.activityType}] ${config.activityName}`);
+  applyPresence('client ready');
+  startPresenceRefreshTimer();
 
   const guild = client.guilds.cache.get(config.guildId);
   if (guild) {
@@ -77,6 +93,7 @@ client.on('shardReconnecting', (id) => {
 
 client.on('shardResume', (id, replayedEvents) => {
   logger.info(`Websocket shard ${id} resumed connection. Replayed ${replayedEvents} events.`);
+  applyPresence(`shard ${id} resumed`);
   voiceManager.join();
 });
 
@@ -90,6 +107,11 @@ client.on('error', (error) => {
 
 async function gracefulShutdown(signal) {
   logger.info(`Received ${signal}. Starting graceful shutdown...`);
+
+  if (presenceRefreshTimer) {
+    clearInterval(presenceRefreshTimer);
+    presenceRefreshTimer = null;
+  }
   
   voiceManager.shutdown();
   
