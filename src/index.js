@@ -1,18 +1,35 @@
 import dns from 'node:dns';
-import { Client, GatewayIntentBits } from 'discord.js';
+import { Client, GatewayIntentBits, ClientPresence } from 'discord.js';
 import { config } from './config.js';
 import { logger } from './logger.js';
 import { voiceManager } from './voice-manager.js';
 
 dns.setDefaultResultOrder('ipv4first');
 
-const PRESENCE_REFRESH_INTERVAL_MS = 4 * 60 * 1000;
+const botStartedAt = Date.now();
+
+// Patch discord.js ClientPresence to preserve timestamps in gateway presence payloads
+const originalParse = ClientPresence.prototype._parse;
+ClientPresence.prototype._parse = function (presence) {
+  const data = originalParse.call(this, presence);
+  if (presence?.activities?.length && data?.activities?.length) {
+    for (let i = 0; i < presence.activities.length; i++) {
+      if (presence.activities[i]?.timestamps && data.activities[i]) {
+        data.activities[i].timestamps = presence.activities[i].timestamps;
+      }
+    }
+  }
+  return data;
+};
 
 function buildPresenceData() {
   return {
     activities: [{
       name: config.activityName,
-      type: config.activityType
+      type: config.activityType,
+      timestamps: {
+        start: botStartedAt
+      }
     }],
     status: 'online',
     afk: false
@@ -34,18 +51,6 @@ const client = new Client({
   presence: buildPresenceData()
 });
 
-let presenceRefreshTimer = null;
-
-function startPresenceRefreshTimer() {
-  if (presenceRefreshTimer) return;
-
-  presenceRefreshTimer = setInterval(() => {
-    applyPresence('scheduled refresh');
-  }, PRESENCE_REFRESH_INTERVAL_MS);
-
-  presenceRefreshTimer.unref?.();
-}
-
 async function enforceNickname(guild) {
   if (!guild || !guild.members?.me) return;
   if (guild.members.me.nickname !== config.botNickname) {
@@ -63,7 +68,6 @@ client.once('clientReady', async () => {
   logger.info(`Bot logged in successfully as ${client.user?.tag}`);
 
   applyPresence('client ready');
-  startPresenceRefreshTimer();
 
   const guild = client.guilds.cache.get(config.guildId);
   if (guild) {
@@ -108,11 +112,6 @@ client.on('error', (error) => {
 async function gracefulShutdown(signal) {
   logger.info(`Received ${signal}. Starting graceful shutdown...`);
 
-  if (presenceRefreshTimer) {
-    clearInterval(presenceRefreshTimer);
-    presenceRefreshTimer = null;
-  }
-  
   voiceManager.shutdown();
   
   try {
