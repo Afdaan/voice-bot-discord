@@ -114,6 +114,14 @@ For long-term daemon management on bare metal, use `systemd` or `pm2`.
 - **Missing required environment variables**: Ensure your `.env` file is named exactly `.env` and resides in the root directory. Check for trailing whitespaces.
 - **Voice connection times out after `signalling -> connecting -> signalling`**: If the startup log says the channel and permissions validated successfully, verify that outbound UDP traffic to Discord voice servers is not blocked by your VPS, firewall, Docker host, or hosting provider.
 - **Stuck in reconnect loop**: Check `docker compose logs` to see if Discord is actively rejecting connection tokens or if rate limits have been triggered. The exponential backoff will automatically space out retry attempts up to 60 seconds.
+- **Activity elapsed timer resets while the container stays running**: Discord's activity timer is not VM or process uptime. Bot accounts cannot set activity `timestamps`; only `name`, `state`, `type`, and `url` are supported. The bot sends its static presence during gateway identification, without redundant updates after ready or resume. This avoids unnecessary presence changes but cannot guarantee that Discord preserves the displayed timer across new sessions.
+- **Distinguish a gateway reconnect from a process restart**: Check `docker compose logs --since 24h bot`. Gateway lifecycle logs include `processUptimeSeconds`; a high value during reconnect shows that the process has not just restarted. `resumed connection` indicates session recovery; `established a new session` indicates a fresh gateway session. A new `Starting Discord AFK Voice Bot...` line indicates a process start.
+
+Offline presence regression check (no token or Discord connection required):
+
+```bash
+node --experimental-vm-modules scripts/check-presence.mjs
+```
 
 ---
 

@@ -1,54 +1,24 @@
 import dns from 'node:dns';
-import { Client, GatewayIntentBits, ClientPresence } from 'discord.js';
+import { Client, GatewayIntentBits } from 'discord.js';
 import { config } from './config.js';
 import { logger } from './logger.js';
 import { voiceManager } from './voice-manager.js';
 
 dns.setDefaultResultOrder('ipv4first');
 
-const botStartedAt = Date.now();
-
-// Patch discord.js ClientPresence to preserve timestamps in gateway presence payloads
-const originalParse = ClientPresence.prototype._parse;
-ClientPresence.prototype._parse = function (presence) {
-  const data = originalParse.call(this, presence);
-  if (presence?.activities?.length && data?.activities?.length) {
-    for (let i = 0; i < presence.activities.length; i++) {
-      if (presence.activities[i]?.timestamps && data.activities[i]) {
-        data.activities[i].timestamps = presence.activities[i].timestamps;
-      }
-    }
-  }
-  return data;
-};
-
-function buildPresenceData() {
-  return {
-    activities: [{
-      name: config.activityName,
-      type: config.activityType,
-      timestamps: {
-        start: botStartedAt
-      }
-    }],
-    status: 'online',
-    afk: false
-  };
-}
-
-function applyPresence(reason) {
-  if (!client.user) return;
-
-  client.user.setPresence(buildPresenceData());
-  logger.info(`Presence refreshed (${reason}): [${config.activityType}] ${config.activityName}`);
-}
-
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildVoiceStates
   ],
-  presence: buildPresenceData()
+  presence: {
+    activities: [{
+      name: config.activityName,
+      type: config.activityType
+    }],
+    status: 'online',
+    afk: false
+  }
 });
 
 async function enforceNickname(guild) {
@@ -66,8 +36,6 @@ async function enforceNickname(guild) {
 
 client.once('clientReady', async () => {
   logger.info(`Bot logged in successfully as ${client.user?.tag}`);
-
-  applyPresence('client ready');
 
   const guild = client.guilds.cache.get(config.guildId);
   if (guild) {
@@ -92,17 +60,20 @@ client.on('voiceStateUpdate', (oldState, newState) => {
 });
 
 client.on('shardReconnecting', (id) => {
-  logger.info(`Websocket shard ${id} reconnecting...`);
+  logger.info(`Websocket shard ${id} reconnecting...`, { processUptimeSeconds: Math.floor(process.uptime()) });
+});
+
+client.on('shardReady', (id) => {
+  logger.info(`Websocket shard ${id} established a new session.`, { processUptimeSeconds: Math.floor(process.uptime()) });
 });
 
 client.on('shardResume', (id, replayedEvents) => {
-  logger.info(`Websocket shard ${id} resumed connection. Replayed ${replayedEvents} events.`);
-  applyPresence(`shard ${id} resumed`);
+  logger.info(`Websocket shard ${id} resumed connection. Replayed ${replayedEvents} events.`, { processUptimeSeconds: Math.floor(process.uptime()) });
   voiceManager.join();
 });
 
 client.on('shardDisconnect', (event, id) => {
-  logger.warn(`Websocket shard ${id} disconnected.`, { code: event.code, reason: event.reason });
+  logger.warn(`Websocket shard ${id} disconnected.`, { code: event.code, reason: event.reason, processUptimeSeconds: Math.floor(process.uptime()) });
 });
 
 client.on('error', (error) => {
@@ -137,7 +108,7 @@ process.on('uncaughtException', (error) => {
   gracefulShutdown('uncaughtException');
 });
 
-logger.info('Starting Discord AFK Voice Bot...');
+logger.info('Starting Discord AFK Voice Bot...', { pid: process.pid, processUptimeSeconds: Math.floor(process.uptime()) });
 client.login(config.token).catch((error) => {
   logger.error('Fatal error during initial login', error);
   process.exit(1);
